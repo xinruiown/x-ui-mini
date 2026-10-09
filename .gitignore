@@ -1,0 +1,17 @@
+/bin/
+/dist/
+/data/
+*.exe
+*.test
+*.out
+.DS_Store
+x-ui-mini
+/usr/
+*.bak
+*.key
+*.pem
+*.crt
+config.json
+xray.json
+.env
+*.sqlite

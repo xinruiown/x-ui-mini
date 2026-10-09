@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>x-ui-mini</title>
+<style>
+:root{--bg:#0f1419;--card:#1a2332;--fg:#e7ecf3;--mut:#8b9bb4;--acc:#3d8bfd;--ok:#3dd68c;--bad:#ff6b6b}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+.wrap{max-width:860px;margin:0 auto;padding:16px}
+h1{font-size:1.2rem;margin:0 0 12px}
+.card{background:var(--card);border-radius:12px;padding:14px;margin:0 0 12px}
+label{display:block;font-size:.85rem;color:var(--mut);margin:8px 0 4px}
+input,select{width:100%;padding:8px 10px;border-radius:8px;border:1px solid #2c3a4f;background:#101820;color:var(--fg)}
+button{background:var(--acc);color:#fff;border:0;border-radius:8px;padding:8px 14px;margin:6px 6px 0 0;cursor:pointer}
+button.ghost{background:#2c3a4f}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.row>*{flex:1;min-width:140px}
+pre{white-space:pre-wrap;word-break:break-all;background:#101820;padding:10px;border-radius:8px;font-size:.8rem}
+.hid{display:none}table{width:100%;font-size:.85rem;border-collapse:collapse}td,th{padding:6px;border-bottom:1px solid #2c3a4f;text-align:left}
+.adv{margin-top:8px;color:var(--mut);font-size:.85rem;cursor:pointer}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>x-ui-mini</h1>
+  <div id="login" class="card">
+    <label>用户名</label><input id="user" value="admin"/>
+    <label>密码</label><input id="pass" type="password"/>
+    <button onclick="login()">登录</button>
+  </div>
+  <div id="app" class="hid">
+    <div class="card" id="status"></div>
+    <div class="card">
+      <b>创建节点</b>
+      <div class="row">
+        <div><label>协议</label>
+          <select id="proto">
+            <option value="vless-reality">VLESS-Reality-Vision</option>
+            <option value="shadowsocks">Shadowsocks</option>
+            <option value="trojan">Trojan-TLS</option>
+          </select>
+        </div>
+        <div><label>端口</label><input id="port" type="number" value="443"/></div>
+        <div><label>名称</label><input id="name" placeholder="可选"/></div>
+      </div>
+      <div class="adv" onclick="document.getElementById('adv').classList.toggle('hid')">高级设置</div>
+      <div id="adv" class="hid">
+        <label>Reality dest</label><input id="dest" placeholder="www.cloudflare.com:443"/>
+        <label>SNI</label><input id="sni" placeholder="www.cloudflare.com"/>
+      </div>
+      <button onclick="createNode()">一键创建</button>
+      <button class="ghost" onclick="apply()">应用配置</button>
+    </div>
+    <div class="card"><b>节点</b><div id="nodes"></div></div>
+    <div class="card">
+      <b>SOCKS5 落地（默认仅本机）</b>
+      <div class="row">
+        <div><label>监听</label><input id="sl" value="127.0.0.1"/></div>
+        <div><label>端口</label><input id="sp" type="number" value="1080"/></div>
+      </div>
+      <button onclick="saveSocks(true)">启用</button>
+      <button class="ghost" onclick="saveSocks(false)">关闭</button>
+    </div>
+    <div class="card">
+      <b>任意门</b>
+      <div class="row">
+        <div><label>模式</label>
+          <select id="fm"><option>relay</option><option>ingress</option><option>egress</option></select>
+        </div>
+        <div><label>端口</label><input id="fp" type="number" value="10000"/></div>
+        <div><label>目标 host:port</label><input id="ft" placeholder="1.2.3.4:443"/></div>
+      </div>
+      <button onclick="addFwd()">添加</button>
+      <div id="fwds"></div>
+    </div>
+    <div class="card">
+      <b>Telegram MTProto</b>
+      <div class="row">
+        <div><label>端口</label><input id="mp" type="number" value="4430"/></div>
+      </div>
+      <button onclick="saveMt()">生成链接</button>
+      <pre id="mtout"></pre>
+    </div>
+  </div>
+</div>
+<script>
+async function login(){
+  const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:user.value,password:pass.value})});
+  if(!r.ok){alert('登录失败');return}
+  login.style.display='none';app.classList.remove('hid');refresh();
+}
+async function refresh(){
+  const st=await (await fetch('/api/status')).json();
+  status.innerHTML='面板 '+st.listen+' /'+st.path+' · Xray '+(st.xray?'运行中':'未运行')+' · 节点 '+st.nodes;
+  const ns=await (await fetch('/api/nodes')).json();
+  nodes.innerHTML='<table><tr><th>名称</th><th>协议</th><th>端口</th><th>链接</th><th></th></tr>'+ns.map(n=>`<tr><td>${n.name}</td><td>${n.protocol}</td><td>${n.port}</td><td><pre>${n.share||''}</pre></td><td><button class="ghost" onclick="delNode('${n.id}')">删</button></td></tr>`).join('')+'</table>';
+  const fs=await (await fetch('/api/forwards')).json();
+  fwds.innerHTML=(fs||[]).map(f=>`<div>${f.mode} :${f.port} → ${f.target} <button class="ghost" onclick="delFwd('${f.id}')">删</button></div>`).join('');
+}
+async function createNode(){
+  const body={protocol:proto.value,port:Number(port.value),name:name.value};
+  if(dest.value) body.reality={dest:dest.value,server_names:sni.value?[sni.value]:undefined};
+  const r=await fetch('/api/nodes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(!r.ok){alert(await r.text());return}
+  await fetch('/api/apply',{method:'POST'});refresh();
+}
+async function delNode(id){await fetch('/api/nodes?id='+id,{method:'DELETE'});refresh()}
+async function saveSocks(en){
+  await fetch('/api/socks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({listen:sl.value,port:Number(sp.value),enabled:en})});
+  refresh();
+}
+async function addFwd(){
+  await fetch('/api/forwards',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:fm.value,port:Number(fp.value),target:ft.value,network:'tcp'})});
+  refresh();
+}
+async function delFwd(id){await fetch('/api/forwards?id='+id,{method:'DELETE'});refresh()}
+async function saveMt(){
+  const r=await fetch('/api/mtproto',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({port:Number(mp.value),enabled:true})});
+  mtout.textContent=JSON.stringify(await r.json(),null,2);
+}
+async function apply(){await fetch('/api/apply',{method:'POST'});refresh()}
+</script>
+</body>
+</html>

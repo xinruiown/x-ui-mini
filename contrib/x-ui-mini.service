@@ -1,0 +1,15 @@
+[Unit]
+Description=x-ui-mini panel
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/x-ui-mini serve
+Restart=on-failure
+RestartSec=3
+User=root
+LimitNOFILE=65535
+Environment=XUIMINI_DATA=/usr/local/x-ui-mini/data
+
+[Install]
+WantedBy=multi-user.target
