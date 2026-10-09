@@ -16,7 +16,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/xinruiown/x-ui-mini/internal/certs"
 	"github.com/xinruiown/x-ui-mini/internal/keys"
+	"github.com/xinruiown/x-ui-mini/internal/mtgctl"
 	"github.com/xinruiown/x-ui-mini/internal/store"
 	"github.com/xinruiown/x-ui-mini/internal/version"
 	"github.com/xinruiown/x-ui-mini/internal/web"
@@ -36,6 +38,14 @@ func main() {
 	switch os.Args[1] {
 	case "serve":
 		must(serve())
+	case "set-host":
+		must(setHost(arg(2, "")))
+	case "configure":
+		must(configure())
+	case "uninstall":
+		must(uninstall())
+	case "bbr":
+		must(enableBBR())
 	case "status":
 		status()
 	case "backup":
@@ -58,9 +68,10 @@ func usage() {
 	fmt.Print(`x-ui-mini — 超轻量中文节点面板
 
 用法:
-  x-ui-mini              交互菜单（终端）
-  x-ui-mini serve        启动面板与 Xray
+  xui / x-ui-mini     交互菜单
+  x-ui-mini serve
   x-ui-mini status
+  x-ui-mini bbr
   x-ui-mini backup [file]
   x-ui-mini restore <file>
   x-ui-mini update
@@ -74,27 +85,141 @@ func serve() error {
 		return err
 	}
 	ensureBootstrap(st)
+	if h := detectPublicHost(); h != "" {
+		_ = st.Update(func(c *store.Config) error {
+			if c.Panel.PublicHost == "" {
+				c.Panel.PublicHost = h
+			}
+			if c.Panel.Listen == "127.0.0.1" {
+				c.Panel.Listen = "0.0.0.0"
+			}
+			return nil
+		})
+	}
 	xr := xrayctl.New(xrayctl.DefaultBin(), filepath.Join(filepath.Dir(store.DefaultPath()), "xray.json"))
+	mtg := mtgctl.New(mtgctl.DefaultBin())
+	if _, _, err := certs.EnsureSelfSigned("localhost"); err == nil {
+		_ = st.Update(func(c *store.Config) error {
+			if c.Panel.CertFile == "" {
+				c.Panel.CertFile = filepath.Join(filepath.Dir(store.DefaultPath()), "certs", "server.crt")
+				c.Panel.KeyFile = filepath.Join(filepath.Dir(store.DefaultPath()), "certs", "server.key")
+			}
+			return nil
+		})
+	}
 	cfg := st.Get()
 	if raw, err := xraycfg.Build(cfg); err == nil {
 		_ = xr.WriteConfig(raw)
 		_ = xr.Restart()
 	}
-	srv := &web.Server{Store: st, Xray: xr}
+	if cfg.MTProto != nil && cfg.MTProto.Enabled {
+		_ = mtg.Restart(cfg.MTProto.Listen, cfg.MTProto.Port, cfg.MTProto.Secret)
+	}
+	srv := &web.Server{Store: st, Xray: xr, Mtg: mtg}
 	httpSrv := &http.Server{Addr: srv.ListenAddr(), Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		ch := make(chan os.Signal, 1)
 		signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
 		<-ch
 		xr.Stop()
+		mtg.Stop()
 		_ = httpSrv.Close()
 	}()
-	fmt.Printf("x-ui-mini %s 监听 http://%s/%s （仅默认本机）\n", version.Version, srv.ListenAddr(), cfg.Panel.Path)
+	fmt.Printf("x-ui-mini %s 监听 http://%s/%s\n", version.Version, srv.ListenAddr(), cfg.Panel.Path)
 	err = httpSrv.ListenAndServe()
 	if err == http.ErrServerClosed {
 		return nil
 	}
 	return err
+}
+
+func setHost(host string) error {
+	if host == "" {
+		host = detectPublicHost()
+	}
+	if host == "" {
+		return fmt.Errorf("无法检测公网地址，请执行: x-ui-mini set-host 你的IP或域名")
+	}
+	st, err := store.Open(store.DefaultPath())
+	if err != nil {
+		return err
+	}
+	return st.Update(func(c *store.Config) error {
+		c.Panel.PublicHost = host
+		return nil
+	})
+}
+
+func detectPublicHost() string {
+	if v := strings.TrimSpace(os.Getenv("XUIMINI_HOST")); v != "" {
+		return v
+	}
+	client := &http.Client{Timeout: 4 * time.Second}
+	resp, err := client.Get("https://api.ipify.org")
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	h := strings.TrimSpace(string(b))
+	if h == "" || strings.ContainsAny(h, " \n<>") {
+		return ""
+	}
+	return h
+}
+
+func configure() error {
+	st, err := store.Open(store.DefaultPath())
+	if err != nil {
+		return err
+	}
+	return st.Update(func(c *store.Config) error {
+		if v := strings.TrimSpace(os.Getenv("XUIMINI_USERNAME")); v != "" {
+			c.Panel.Username = v
+		}
+		if v := os.Getenv("XUIMINI_PASSWORD"); v != "" {
+			c.Panel.PasswordSalt = store.RandHex(8)
+			c.Panel.PasswordHash = store.HashPassword(c.Panel.PasswordSalt, v)
+			_ = os.WriteFile(filepath.Join(filepath.Dir(st.Path()), "initial-password.txt"), []byte(v+"\n"), 0o600)
+		}
+		if v := strings.Trim(strings.TrimSpace(os.Getenv("XUIMINI_PATH")), "/"); v != "" {
+			c.Panel.Path = v
+		}
+		if v := strings.TrimSpace(os.Getenv("XUIMINI_HOST")); v != "" {
+			c.Panel.PublicHost = v
+		}
+		if v := strings.TrimSpace(os.Getenv("XUIMINI_LISTEN")); v != "" {
+			c.Panel.Listen = v
+		} else {
+			c.Panel.Listen = "0.0.0.0"
+		}
+		if v := strings.TrimSpace(os.Getenv("XUIMINI_PORT")); v != "" {
+			if p, err := strconv.Atoi(v); err == nil && p > 0 {
+				c.Panel.Port = p
+			}
+		}
+		if v := strings.TrimSpace(os.Getenv("XUIMINI_DOMAIN")); v != "" {
+			c.Panel.Domain = v
+			if c.Panel.PublicHost == "" {
+				c.Panel.PublicHost = v
+			}
+		}
+		return nil
+	})
+}
+
+func uninstall() error {
+	if os.Getenv("XUIMINI_UNINSTALL") != "1" {
+		return fmt.Errorf("确认卸载请设置 XUIMINI_UNINSTALL=1")
+	}
+	_ = exec.Command("systemctl", "disable", "--now", "x-ui-mini").Run()
+	_ = os.Remove("/etc/systemd/system/x-ui-mini.service")
+	_ = os.Remove("/usr/local/bin/x-ui-mini")
+	_ = os.Remove("/usr/local/bin/xui")
+	_ = os.RemoveAll("/usr/local/x-ui-mini")
+	_ = exec.Command("systemctl", "daemon-reload").Run()
+	fmt.Println("已卸载 x-ui-mini")
+	return nil
 }
 
 func ensureBootstrap(st *store.Store) {
@@ -210,51 +335,6 @@ func restore(in string) error {
 	}
 	fmt.Println("已恢复，请执行: systemctl restart x-ui-mini")
 	return nil
-}
-
-func menu() {
-	in := bufio.NewScanner(os.Stdin)
-	for {
-		fmt.Print(`
-x-ui-mini 菜单
-1) 安装或初始化（serve 检测）
-2) 创建节点
-3) 节点管理
-4) 任意门管理
-5) Telegram 代理
-6) 更新版本
-7) 备份恢复
-8) 服务状态
-9) 卸载提示
-0) 退出
-请选择: `)
-		if !in.Scan() {
-			return
-		}
-		switch strings.TrimSpace(in.Text()) {
-		case "1":
-			fmt.Println("服务模式请使用: systemctl start x-ui-mini 或 x-ui-mini serve")
-		case "2":
-			createNodeCLI(in)
-		case "3":
-			listNodes()
-		case "4":
-			fmt.Println("任意门请用 WebUI 或后续 CLI；当前可用 Web 面板。")
-		case "5":
-			mtCLI(in)
-		case "6":
-			fmt.Println("curl -fsSL https://raw.githubusercontent.com/xinruiown/x-ui-mini/main/install.sh | sudo bash")
-		case "7":
-			fmt.Println("备份: x-ui-mini backup")
-			fmt.Println("恢复: x-ui-mini restore <file>")
-		case "8":
-			status()
-		case "9":
-			fmt.Println("卸载: systemctl disable --now x-ui-mini && rm -rf /usr/local/x-ui-mini /usr/local/bin/x-ui-mini /etc/systemd/system/x-ui-mini.service")
-		case "0", "q":
-			return
-		}
-	}
 }
 
 func createNodeCLI(in *bufio.Scanner) {

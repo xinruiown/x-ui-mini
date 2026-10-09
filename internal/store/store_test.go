@@ -17,7 +17,7 @@ func TestOpenAndHash(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := s.Get()
-	if cfg.Panel.Listen != "127.0.0.1" {
+	if cfg.Panel.Listen != "0.0.0.0" {
 		t.Fatalf("listen %s", cfg.Panel.Listen)
 	}
 	if store.HashPassword("a", "b") == store.HashPassword("a", "c") {

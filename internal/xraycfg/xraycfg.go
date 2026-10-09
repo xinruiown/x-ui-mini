@@ -1,8 +1,10 @@
 package xraycfg
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/xinruiown/x-ui-mini/internal/store"
@@ -37,11 +39,15 @@ func Build(cfg store.Config) ([]byte, error) {
 						"shortIds":    []string{n.Reality.ShortID},
 					},
 				},
+				"sniffing": map[string]any{
+					"enabled":      true,
+					"destOverride": []string{"http", "tls", "quic"},
+				},
 			})
 		case "shadowsocks":
 			method := n.Method
 			if method == "" {
-				method = "2022-blake3-aes-128-gcm"
+				method = "aes-128-gcm"
 			}
 			inbounds = append(inbounds, map[string]any{
 				"tag":      "in-" + n.ID,
@@ -55,6 +61,8 @@ func Build(cfg store.Config) ([]byte, error) {
 				},
 			})
 		case "trojan":
+			cert := or(cfg.Panel.CertFile, "/usr/local/x-ui-mini/data/certs/server.crt")
+			key := or(cfg.Panel.KeyFile, "/usr/local/x-ui-mini/data/certs/server.key")
 			inbounds = append(inbounds, map[string]any{
 				"tag":      "in-" + n.ID,
 				"listen":   "0.0.0.0",
@@ -67,7 +75,7 @@ func Build(cfg store.Config) ([]byte, error) {
 					"network":  "tcp",
 					"security": "tls",
 					"tlsSettings": map[string]any{
-						"certificates": []any{},
+						"certificates": []any{map[string]any{"certificateFile": cert, "keyFile": key}},
 					},
 				},
 			})
@@ -84,6 +92,19 @@ func Build(cfg store.Config) ([]byte, error) {
 			"listen":   or(cfg.SOCKS.Listen, "127.0.0.1"),
 			"port":     cfg.SOCKS.Port,
 			"protocol": "socks",
+			"settings": settings,
+		})
+	}
+	if cfg.HTTP != nil && cfg.HTTP.Enabled {
+		settings := map[string]any{}
+		if cfg.HTTP.User != "" {
+			settings["accounts"] = []any{map[string]any{"user": cfg.HTTP.User, "pass": cfg.HTTP.Pass}}
+		}
+		inbounds = append(inbounds, map[string]any{
+			"tag":      "http-in",
+			"listen":   or(cfg.HTTP.Listen, "127.0.0.1"),
+			"port":     cfg.HTTP.Port,
+			"protocol": "http",
 			"settings": settings,
 		})
 	}
@@ -119,8 +140,9 @@ func Build(cfg store.Config) ([]byte, error) {
 
 func Share(n store.Node, host string) string {
 	if host == "" {
-		host = "YOUR_IP"
+		host = "127.0.0.1"
 	}
+	name := url.QueryEscape(n.Name)
 	switch n.Protocol {
 	case "vless-reality":
 		sni := "www.cloudflare.com"
@@ -131,12 +153,21 @@ func Share(n store.Node, host string) string {
 		if fp == "" {
 			fp = "chrome"
 		}
-		return fmt.Sprintf("vless://%s@%s:%d?encryption=none&flow=xtls-rprx-vision&security=reality&sni=%s&fp=%s&pbk=%s&sid=%s&type=tcp#%s",
-			n.UUID, host, n.Port, sni, fp, n.Reality.PublicKey, n.Reality.ShortID, n.Name)
+		return fmt.Sprintf("vless://%s@%s:%d?type=tcp&encryption=none&security=reality&pbk=%s&fp=%s&sni=%s&sid=%s&spx=%%2F&flow=xtls-rprx-vision#%s",
+			n.UUID, host, n.Port, n.Reality.PublicKey, fp, sni, n.Reality.ShortID, name)
 	case "shadowsocks":
-		return fmt.Sprintf("ss://%s:%s@%s:%d#%s", n.Method, n.Password, host, n.Port, n.Name)
+		method := n.Method
+		if method == "" {
+			method = "aes-128-gcm"
+		}
+		userinfo := base64.StdEncoding.EncodeToString([]byte(method + ":" + n.Password))
+		return fmt.Sprintf("ss://%s@%s:%d#%s", userinfo, host, n.Port, name)
 	case "trojan":
-		return fmt.Sprintf("trojan://%s@%s:%d?security=tls&type=tcp#%s", n.Password, host, n.Port, n.Name)
+		q := url.Values{}
+		q.Set("security", "tls")
+		q.Set("type", "tcp")
+		q.Set("allowInsecure", "1")
+		return fmt.Sprintf("trojan://%s@%s:%d?%s#%s", n.Password, host, n.Port, q.Encode(), name)
 	}
 	return ""
 }

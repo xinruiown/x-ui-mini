@@ -11,7 +11,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/xinruiown/x-ui-mini/internal/certs"
 	"github.com/xinruiown/x-ui-mini/internal/keys"
+	"github.com/xinruiown/x-ui-mini/internal/mtgctl"
 	"github.com/xinruiown/x-ui-mini/internal/store"
 	"github.com/xinruiown/x-ui-mini/internal/xraycfg"
 	"github.com/xinruiown/x-ui-mini/internal/xrayctl"
@@ -21,6 +23,7 @@ import (
 type Server struct {
 	Store *store.Store
 	Xray  *xrayctl.Proc
+	Mtg   *mtgctl.Proc
 	mu    sync.Mutex
 }
 
@@ -34,8 +37,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/nodes", s.auth(s.nodes))
 	mux.HandleFunc("/api/forwards", s.auth(s.forwards))
 	mux.HandleFunc("/api/socks", s.auth(s.socks))
+	mux.HandleFunc("/api/http", s.auth(s.httpIn))
 	mux.HandleFunc("/api/mtproto", s.auth(s.mtproto))
 	mux.HandleFunc("/api/apply", s.auth(s.apply))
+	mux.HandleFunc("/api/settings", s.auth(s.settings))
+	mux.HandleFunc("/api/cert", s.auth(s.cert))
 	return mux
 }
 
@@ -94,8 +100,12 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		"nodes":      len(cfg.Nodes),
 		"forwards":   len(cfg.Forwards),
 		"socks":      cfg.SOCKS,
+		"http":       cfg.HTTP,
 		"mtproto":    cfg.MTProto != nil && cfg.MTProto.Enabled,
+		"mtg":        s.Mtg != nil && s.Mtg.Running(),
 		"publicHost": cfg.Panel.PublicHost,
+		"domain":     cfg.Panel.Domain,
+		"cert_file":  cfg.Panel.CertFile,
 	})
 }
 
@@ -119,6 +129,36 @@ func (s *Server) nodes(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := s.createNode(in); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		_ = s.reload()
+		cfg := s.Store.Get()
+		var created store.Node
+		if len(cfg.Nodes) > 0 {
+			created = cfg.Nodes[len(cfg.Nodes)-1]
+		}
+		writeJSON(w, map[string]any{"ok": true, "share": xraycfg.Share(created, cfg.Panel.PublicHost)})
+	case http.MethodPut:
+		id := r.URL.Query().Get("id")
+		var in struct {
+			Name string `json:"name"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&in)
+		if id == "" || in.Name == "" {
+			http.Error(w, "需要 id 和 name", 400)
+			return
+		}
+		err := s.Store.Update(func(c *store.Config) error {
+			for i := range c.Nodes {
+				if c.Nodes[i].ID == id {
+					c.Nodes[i].Name = in.Name
+					return nil
+				}
+			}
+			return errf("节点不存在")
+		})
+		if err != nil {
 			http.Error(w, err.Error(), 400)
 			return
 		}
@@ -198,6 +238,9 @@ func (s *Server) forwards(w http.ResponseWriter, r *http.Request) {
 		if in.Mode == "" {
 			in.Mode = "relay"
 		}
+		if in.Listen == "" {
+			in.Listen = "0.0.0.0"
+		}
 		if in.Network == "" {
 			in.Network = "tcp"
 		}
@@ -231,23 +274,61 @@ func (s *Server) socks(w http.ResponseWriter, r *http.Request) {
 		if in.Listen == "" {
 			in.Listen = "127.0.0.1"
 		}
+		if in.Port == 0 {
+			in.Port = 1080
+		}
 		_ = s.Store.Update(func(c *store.Config) error { c.SOCKS = &in; return nil })
 		_ = s.reload()
 	}
 	writeJSON(w, s.Store.Get().SOCKS)
 }
 
+func (s *Server) httpIn(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		var in store.HTTP
+		_ = json.NewDecoder(r.Body).Decode(&in)
+		if in.Listen == "" {
+			in.Listen = "127.0.0.1"
+		}
+		if in.Port == 0 {
+			in.Port = 8080
+		}
+		_ = s.Store.Update(func(c *store.Config) error { c.HTTP = &in; return nil })
+		_ = s.reload()
+	}
+	writeJSON(w, s.Store.Get().HTTP)
+}
+
 func (s *Server) mtproto(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		var in store.MTProto
 		_ = json.NewDecoder(r.Body).Decode(&in)
-		if in.Secret == "" {
-			in.Secret = keys.MTProtoSecret()
-		}
 		if in.Listen == "" {
 			in.Listen = "0.0.0.0"
 		}
+		if in.Port == 0 {
+			in.Port = 4430
+		}
+		if s.Mtg == nil {
+			s.Mtg = mtgctl.New(mtgctl.DefaultBin())
+		}
+		if in.Secret == "" {
+			sec, err := s.Mtg.GenerateSecret("www.cloudflare.com")
+			if err != nil {
+				http.Error(w, err.Error(), 500)
+				return
+			}
+			in.Secret = sec
+		}
 		_ = s.Store.Update(func(c *store.Config) error { c.MTProto = &in; return nil })
+		if in.Enabled {
+			if err := s.Mtg.Restart(in.Listen, in.Port, in.Secret); err != nil {
+				http.Error(w, err.Error(), 500)
+				return
+			}
+		} else {
+			s.Mtg.Stop()
+		}
 	}
 	cfg := s.Store.Get()
 	if cfg.MTProto == nil {
@@ -255,10 +336,108 @@ func (s *Server) mtproto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]any{
-		"config": cfg.MTProto,
-		"link":   xraycfg.MTProtoLink(*cfg.MTProto, cfg.Panel.PublicHost),
-		"note":   "v0.1.0 生成 tg:// 链接与 secret；独立 mtg 进程将在后续版本随模块安装启动。",
+		"config":  cfg.MTProto,
+		"link":    xraycfg.MTProtoLink(*cfg.MTProto, cfg.Panel.PublicHost),
+		"running": s.Mtg != nil && s.Mtg.Running(),
 	})
+}
+
+func (s *Server) cert(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		cfg := s.Store.Get()
+		writeJSON(w, map[string]any{"domain": cfg.Panel.Domain, "cert_file": cfg.Panel.CertFile, "key_file": cfg.Panel.KeyFile})
+		return
+	}
+	var in struct {
+		Domain string `json:"domain"`
+		Email  string `json:"email"`
+		Mode   string `json:"mode"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&in)
+	var cert, key string
+	var err error
+	switch in.Mode {
+	case "acme":
+		cert, key, err = certs.IssueACME(in.Domain, in.Email)
+	default:
+		cn := in.Domain
+		if cn == "" {
+			cn = "localhost"
+		}
+		cert, key, err = certs.EnsureSelfSigned(cn)
+	}
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	_ = s.Store.Update(func(c *store.Config) error {
+		if in.Domain != "" {
+			c.Panel.Domain = in.Domain
+			c.Panel.PublicHost = in.Domain
+		}
+		c.Panel.CertFile, c.Panel.KeyFile = cert, key
+		return nil
+	})
+	writeJSON(w, map[string]any{"ok": true, "cert_file": cert, "key_file": key})
+}
+
+func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		cfg := s.Store.Get()
+		writeJSON(w, map[string]any{
+			"listen":      cfg.Panel.Listen,
+			"port":        cfg.Panel.Port,
+			"path":        cfg.Panel.Path,
+			"username":    cfg.Panel.Username,
+			"public_host": cfg.Panel.PublicHost,
+			"domain":      cfg.Panel.Domain,
+		})
+	case http.MethodPost:
+		var in struct {
+			PublicHost string `json:"public_host"`
+			Username   string `json:"username"`
+			Password   string `json:"password"`
+			Path       string `json:"path"`
+			Listen     string `json:"listen"`
+			Port       int    `json:"port"`
+			Domain     string `json:"domain"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&in)
+		err := s.Store.Update(func(c *store.Config) error {
+			if in.PublicHost != "" {
+				c.Panel.PublicHost = in.PublicHost
+			}
+			if in.Username != "" {
+				c.Panel.Username = in.Username
+			}
+			if in.Password != "" {
+				c.Panel.PasswordSalt = store.RandHex(8)
+				c.Panel.PasswordHash = store.HashPassword(c.Panel.PasswordSalt, in.Password)
+			}
+			if in.Path != "" {
+				c.Panel.Path = strings.Trim(in.Path, "/")
+			}
+			if in.Listen != "" {
+				c.Panel.Listen = in.Listen
+			}
+			if in.Port > 0 {
+				c.Panel.Port = in.Port
+			}
+			if in.Domain != "" {
+				c.Panel.Domain = in.Domain
+				c.Panel.PublicHost = in.Domain
+			}
+			return nil
+		})
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true})
+	default:
+		http.Error(w, "method", 405)
+	}
 }
 
 func (s *Server) apply(w http.ResponseWriter, r *http.Request) {
@@ -280,7 +459,20 @@ func (s *Server) reload() error {
 	if err := s.Xray.WriteConfig(raw); err != nil {
 		return err
 	}
-	return s.Xray.Restart()
+	if err := s.Xray.Restart(); err != nil {
+		return err
+	}
+	if s.Mtg != nil && cfg.MTProto != nil && cfg.MTProto.Enabled {
+		_ = s.Mtg.Restart(orListen(cfg.MTProto.Listen, "0.0.0.0"), cfg.MTProto.Port, cfg.MTProto.Secret)
+	}
+	return nil
+}
+
+func orListen(v, d string) string {
+	if v == "" {
+		return d
+	}
+	return v
 }
 
 func (s *Server) ListenAddr() string {

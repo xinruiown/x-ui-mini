@@ -1,48 +1,55 @@
 # x-ui-mini
 
-超轻量中文节点面板。操作风格参考 [vaxilu/x-ui](https://github.com/vaxilu/x-ui)，**源码独立实现（MIT）**，不是该仓库的 fork，因此不整仓复用其 GPL-3.0 代码。
+超轻量中文节点面板。操作风格参考 [vaxilu/x-ui](https://github.com/vaxilu/x-ui)，**源码独立实现（MIT）**，不是该仓库的 fork。
 
-面向 128MB～1GB Debian VPS，AMD64 / ARM64。不依赖 Docker、Node.js、Nginx 或大型数据库。默认管理后台只监听 `127.0.0.1`。
+面向 128MB～1GB Debian VPS，AMD64 / ARM64。不依赖 Docker、Node.js、Nginx 或大型数据库。
 
 现有 VMISS / 3X-UI 生产环境与本项目隔离，安装不会改动它们。
 
 ## 一键安装
 
-仓库需先有 GitHub Release。当前账号：
+在服务器终端执行（会询问端口、用户名、密码、路径、公网地址、证书域名；回车用默认/随机）：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/xinruiown/x-ui-mini/main/install.sh | sudo bash
 ```
 
-安装脚本从 Releases 下载并 `sha256sum` 校验二进制，失败回滚上一份目录备份。
+也可用环境变量跳过问答：
 
 ```bash
-x-ui-mini            # 中文菜单
-x-ui-mini status
-x-ui-mini backup
-x-ui-mini restore <file>
-x-ui-mini update     # 提示再次运行 install.sh
+sudo XUIMINI_USERNAME=admin XUIMINI_PORT=2053 XUIMINI_PATH=panel \
+  XUIMINI_PASSWORD='你的密码' XUIMINI_HOST='你的IP或域名' bash -c \
+  'curl -fsSL https://raw.githubusercontent.com/xinruiown/x-ui-mini/main/install.sh | bash'
 ```
 
-访问面板：`ssh -L 2053:127.0.0.1:2053 user@vps` 后打开 `http://127.0.0.1:2053/<path>`。
+安装脚本从 Releases 校验下载二进制，并安装 Xray、mtg、自签证书，尝试开启 BBR。
 
-默认用户 `admin`，首次密码见数据目录 `initial-password.txt`（v0.1.0 若文件不存在，请在 Web 登录前用 `XUIMINI_DATA` 下的 config 重置）。
+```bash
+xui                 # 中文管理菜单（改密、改端口、启停、BBR、备份、卸载）
+x-ui-mini status
+x-ui-mini bbr
+x-ui-mini backup
+x-ui-mini restore <file>
+```
 
-## v0.1.0 已实现
+浏览器打开：`http://公网IP:端口/路径`  
+默认用户 `admin`，密码见 `/usr/local/x-ui-mini/data/initial-password.txt`（若安装时自己设了密码，以你设的为准）。
 
-- 一键创建 VLESS-Reality-Vision、Shadowsocks、Trojan（Trojan 入站 TLS 证书需在高级/后续版本挂载，当前生成链接）
-- SOCKS5 落地，默认 `127.0.0.1`
-- TCP 任意门（dokodemo-door），模式标记 relay/ingress/egress
-- Telegram MTProto：生成 `tg://` 与 secret（独立 mtg 进程为后续模块）
-- 分享链接；二维码在 v0.1.0 Web 以链接文本为主，后续补内嵌码
-- systemd、备份恢复、升级回滚脚本
-- AmneziaWG / Hysteria2：标记为按需模块，v0.1.0 不默认安装
+## 已实现
+
+- 一键创建 VLESS-Reality-Vision、Shadowsocks、Trojan（自签或 Let’s Encrypt）
+- SOCKS5 / HTTP 落地，可设用户名密码
+- TCP 任意门：中转 / 入口 / 落地
+- Telegram MTProto（mtg）
+- 分享链接；Web 可改节点名称并复制链接
+- systemd、备份恢复、升级回滚
+- AmneziaWG / Hysteria2：按需，默认不装
 
 ## 安全
 
 - 不要把 `config.json`、密码、Reality 私钥、证书私钥提交到 Git
-- 管理端口不要映射到公网，除非你明确改 listen 并加防火墙
+- SOCKS/HTTP 若对公网开放必须设密码
 
 ## 许可证
 
-MIT。Xray-core 为其自身许可证，由安装脚本另行下载。
+MIT。Xray-core、mtg 为其自身许可证，由安装脚本另行下载。

@@ -18,6 +18,7 @@ type Config struct {
 	Nodes    []Node    `json:"nodes"`
 	Forwards []Forward `json:"forwards"`
 	SOCKS    *SOCKS    `json:"socks,omitempty"`
+	HTTP     *HTTP     `json:"http,omitempty"`
 	MTProto  *MTProto  `json:"mtproto,omitempty"`
 	Modules  Modules   `json:"modules"`
 }
@@ -30,6 +31,9 @@ type Panel struct {
 	PasswordHash string `json:"password_hash"`
 	Path         string `json:"path"`
 	PublicHost   string `json:"public_host"`
+	Domain       string `json:"domain,omitempty"`
+	CertFile     string `json:"cert_file,omitempty"`
+	KeyFile      string `json:"key_file,omitempty"`
 }
 
 type Node struct {
@@ -56,7 +60,7 @@ type Reality struct {
 type Forward struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
-	Mode     string `json:"mode"` // relay, ingress, egress
+	Mode     string `json:"mode"` // relay=中转, ingress=入口, egress=落地
 	Listen   string `json:"listen"`
 	Port     int    `json:"port"`
 	Network  string `json:"network"` // tcp, udp, tcp,udp
@@ -71,6 +75,14 @@ type SOCKS struct {
 	Pass     string `json:"pass,omitempty"`
 	UDP      bool   `json:"udp"`
 	Enabled  bool   `json:"enabled"`
+}
+
+type HTTP struct {
+	Listen  string `json:"listen"`
+	Port    int    `json:"port"`
+	User    string `json:"user,omitempty"`
+	Pass    string `json:"pass,omitempty"`
+	Enabled bool   `json:"enabled"`
 }
 
 type MTProto struct {
@@ -127,7 +139,7 @@ func defaultConfig(pass string) Config {
 	return Config{
 		Version: "1",
 		Panel: Panel{
-			Listen:       "127.0.0.1",
+			Listen:       "0.0.0.0",
 			Port:         2053,
 			Username:     "admin",
 			PasswordSalt: salt,

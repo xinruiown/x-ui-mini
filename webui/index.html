@@ -5,121 +5,225 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>x-ui-mini</title>
 <style>
-:root{--bg:#0f1419;--card:#1a2332;--fg:#e7ecf3;--mut:#8b9bb4;--acc:#3d8bfd;--ok:#3dd68c;--bad:#ff6b6b}
-*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--fg)}
-.wrap{max-width:860px;margin:0 auto;padding:16px}
-h1{font-size:1.2rem;margin:0 0 12px}
-.card{background:var(--card);border-radius:12px;padding:14px;margin:0 0 12px}
-label{display:block;font-size:.85rem;color:var(--mut);margin:8px 0 4px}
-input,select{width:100%;padding:8px 10px;border-radius:8px;border:1px solid #2c3a4f;background:#101820;color:var(--fg)}
-button{background:var(--acc);color:#fff;border:0;border-radius:8px;padding:8px 14px;margin:6px 6px 0 0;cursor:pointer}
-button.ghost{background:#2c3a4f}
-.row{display:flex;gap:8px;flex-wrap:wrap}
+:root{--bg:#0b1220;--side:#111a2e;--card:#17233b;--line:#24344f;--fg:#e8eef8;--mut:#8ea0b8;--acc:#3b82f6;--bad:#ef4444}
+*{box-sizing:border-box}html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,sans-serif}
+.login{max-width:360px;margin:12vh auto;background:var(--card);padding:28px;border-radius:16px}
+.login h1{margin:0 0 8px;font-size:1.3rem}
+.hint{color:var(--mut);font-size:.85rem;margin-bottom:16px}
+label{display:block;font-size:.8rem;color:var(--mut);margin:10px 0 4px}
+input,select{width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:#0d1526;color:var(--fg)}
+button{background:var(--acc);color:#fff;border:0;border-radius:10px;padding:10px 14px;cursor:pointer}
+button.ghost{background:#24344f}
+.app{display:flex;min-height:100%}
+.side{width:220px;background:var(--side);padding:18px 12px;flex-shrink:0}
+.side h2{margin:0 12px 18px;font-size:1rem}
+.side button{width:100%;text-align:left;background:transparent;margin:4px 0}
+.side button.on{background:#1e3a5f}
+.main{flex:1;padding:18px;overflow:auto}
+.card{background:var(--card);border-radius:14px;padding:16px;margin-bottom:14px}
+.row{display:flex;gap:10px;flex-wrap:wrap}
 .row>*{flex:1;min-width:140px}
-pre{white-space:pre-wrap;word-break:break-all;background:#101820;padding:10px;border-radius:8px;font-size:.8rem}
-.hid{display:none}table{width:100%;font-size:.85rem;border-collapse:collapse}td,th{padding:6px;border-bottom:1px solid #2c3a4f;text-align:left}
-.adv{margin-top:8px;color:var(--mut);font-size:.85rem;cursor:pointer}
+table{width:100%;border-collapse:collapse;font-size:.9rem}
+th,td{padding:8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+pre{white-space:pre-wrap;word-break:break-all;background:#0d1526;padding:8px;border-radius:8px;font-size:.78rem;margin:0}
+.hid{display:none}
+.stat{color:var(--mut);font-size:.85rem;margin-bottom:10px}
+@media(max-width:800px){.app{flex-direction:column}.side{width:auto;display:flex;gap:8px;overflow:auto}}
 </style>
 </head>
 <body>
-<div class="wrap">
+<div id="login" class="login">
   <h1>x-ui-mini</h1>
-  <div id="login" class="card">
-    <label>用户名</label><input id="user" value="admin"/>
-    <label>密码</label><input id="pass" type="password"/>
-    <button onclick="login()">登录</button>
-  </div>
-  <div id="app" class="hid">
-    <div class="card" id="status"></div>
-    <div class="card">
-      <b>创建节点</b>
+  <div class="hint">用 IP:端口/路径 打开。用户名默认 admin，密码在服务器 initial-password.txt。</div>
+  <label>用户名</label><input id="user" value="admin" autocomplete="username"/>
+  <label>密码</label><input id="pass" type="password" autocomplete="current-password"/>
+  <div style="margin-top:14px"><button type="button" id="btnLogin">登录</button></div>
+</div>
+<div id="app" class="app hid">
+  <aside class="side">
+    <h2>x-ui-mini</h2>
+    <button class="on" data-p="in" onclick="tab('in')">入站节点</button>
+    <button data-p="fwd" onclick="tab('fwd')">任意门</button>
+    <button data-p="socks" onclick="tab('socks')">落地代理</button>
+    <button data-p="tg" onclick="tab('tg')">Telegram</button>
+    <button data-p="sys" onclick="tab('sys')">系统</button>
+  </aside>
+  <main class="main">
+    <div class="stat" id="statline"></div>
+    <section id="p-in" class="card">
+      <b>一键创建</b>
       <div class="row">
         <div><label>协议</label>
           <select id="proto">
             <option value="vless-reality">VLESS-Reality-Vision</option>
             <option value="shadowsocks">Shadowsocks</option>
             <option value="trojan">Trojan-TLS</option>
-          </select>
-        </div>
+          </select></div>
         <div><label>端口</label><input id="port" type="number" value="443"/></div>
         <div><label>名称</label><input id="name" placeholder="可选"/></div>
       </div>
-      <div class="adv" onclick="document.getElementById('adv').classList.toggle('hid')">高级设置</div>
-      <div id="adv" class="hid">
+      <details style="margin:8px 0;color:var(--mut)"><summary>高级</summary>
         <label>Reality dest</label><input id="dest" placeholder="www.cloudflare.com:443"/>
         <label>SNI</label><input id="sni" placeholder="www.cloudflare.com"/>
-      </div>
-      <button onclick="createNode()">一键创建</button>
-      <button class="ghost" onclick="apply()">应用配置</button>
-    </div>
-    <div class="card"><b>节点</b><div id="nodes"></div></div>
-    <div class="card">
-      <b>SOCKS5 落地（默认仅本机）</b>
-      <div class="row">
-        <div><label>监听</label><input id="sl" value="127.0.0.1"/></div>
-        <div><label>端口</label><input id="sp" type="number" value="1080"/></div>
-      </div>
-      <button onclick="saveSocks(true)">启用</button>
-      <button class="ghost" onclick="saveSocks(false)">关闭</button>
-    </div>
-    <div class="card">
-      <b>任意门</b>
+      </details>
+      <button onclick="createNode()">创建并应用</button>
+      <div id="nodes" style="margin-top:12px"></div>
+    </section>
+    <section id="p-fwd" class="card hid">
+      <b>任意门（端口转发）</b>
+      <p class="hint">三种模式底层都是把本机端口的流量转到目标地址，差别在用法：<br>
+      <b>中转</b>：中转机，监听后转到下一跳 VPS。<br>
+      <b>入口</b>：对公网开放监听，把进来的流量转到内网或中转。<br>
+      <b>落地</b>：落地机接收转发，目标一般是本机或内网服务。</p>
       <div class="row">
         <div><label>模式</label>
-          <select id="fm"><option>relay</option><option>ingress</option><option>egress</option></select>
-        </div>
-        <div><label>端口</label><input id="fp" type="number" value="10000"/></div>
+          <select id="fm">
+            <option value="relay">中转</option>
+            <option value="ingress">入口</option>
+            <option value="egress">落地</option>
+          </select></div>
+        <div><label>监听端口</label><input id="fp" type="number" value="10000"/></div>
         <div><label>目标 host:port</label><input id="ft" placeholder="1.2.3.4:443"/></div>
       </div>
       <button onclick="addFwd()">添加</button>
-      <div id="fwds"></div>
-    </div>
-    <div class="card">
-      <b>Telegram MTProto</b>
+      <div id="fwds" style="margin-top:12px"></div>
+    </section>
+    <section id="p-socks" class="card hid">
+      <b>SOCKS5 / HTTP 落地</b>
+      <p class="hint">给本机或内网当出口。对公网开放务必设置用户名密码。监听 127.0.0.1 仅本机可用。</p>
       <div class="row">
+        <div><label>SOCKS 监听</label><input id="sl" value="127.0.0.1"/></div>
+        <div><label>端口</label><input id="sp" type="number" value="1080"/></div>
+        <div><label>用户名（可空）</label><input id="su" placeholder="可选"/></div>
+        <div><label>密码</label><input id="sPwd" type="password"/></div>
+      </div>
+      <button onclick="saveSocks(true)">启用 SOCKS5</button>
+      <button class="ghost" onclick="saveSocks(false)">关闭 SOCKS5</button>
+      <div class="row" style="margin-top:12px">
+        <div><label>HTTP 监听</label><input id="hl" value="127.0.0.1"/></div>
+        <div><label>端口</label><input id="hp" type="number" value="8080"/></div>
+        <div><label>用户名（可空）</label><input id="hu" placeholder="可选"/></div>
+        <div><label>密码</label><input id="hPwd" type="password"/></div>
+      </div>
+      <button onclick="saveHTTP(true)">启用 HTTP</button>
+      <button class="ghost" onclick="saveHTTP(false)">关闭 HTTP</button>
+    </section>
+    <section id="p-tg" class="card hid">
+      <b>Telegram MTProto</b>
+      <p class="hint">使用 mtg 真代理，不是只生成链接。Telegram 设置 → 数据与存储 → 代理 → 添加代理。</p>
+      <div class="row">
+        <div><label>监听</label><input id="ml" value="0.0.0.0"/></div>
         <div><label>端口</label><input id="mp" type="number" value="4430"/></div>
       </div>
-      <button onclick="saveMt()">生成链接</button>
+      <button onclick="saveMt(true)">启用并生成链接</button>
+      <button class="ghost" onclick="saveMt(false)">关闭</button>
       <pre id="mtout"></pre>
-    </div>
-  </div>
+    </section>
+    <section id="p-sys" class="card hid">
+      <b>系统</b>
+      <label>公网 IP 或域名（写入分享链接）</label>
+      <input id="phost" placeholder="例如 206.237.120.223 或 node.example.com"/>
+      <div style="margin:10px 0"><button type="button" onclick="saveHost()">保存公网地址</button></div>
+      <label>证书域名</label>
+      <input id="cdomain" placeholder="node.example.com，没有域名可留空用自签"/>
+      <div class="row">
+        <div><label>证书方式</label>
+          <select id="cmode">
+            <option value="self">自签证书（立刻可用，客户端需允许不安全）</option>
+            <option value="acme">Let’s Encrypt（需要域名已解析到本机且 80 端口空闲）</option>
+          </select></div>
+      </div>
+      <button type="button" onclick="issueCert()">签发 / 续签证书</button>
+      <p class="hint" id="certinfo">证书用于 Trojan。签发后点「重新应用 Xray」。</p>
+      <p class="hint">备份：x-ui-mini backup。证书目录 /usr/local/x-ui-mini/data/certs/</p>
+      <button class="ghost" onclick="apply()">重新应用 Xray</button>
+    </section>
+  </main>
 </div>
 <script>
-async function login(){
-  const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:user.value,password:pass.value})});
-  if(!r.ok){alert('登录失败');return}
-  login.style.display='none';app.classList.remove('hid');refresh();
+const API='/api';
+async function api(path, opt){
+  const r=await fetch(API+path, Object.assign({credentials:'same-origin'}, opt||{}));
+  return r;
 }
+function tab(id){
+  document.querySelectorAll('.side button').forEach(b=>b.classList.toggle('on', b.dataset.p===id));
+  ['in','fwd','socks','tg','sys'].forEach(x=>document.getElementById('p-'+x).classList.toggle('hid', x!==id));
+}
+async function doLogin(){
+  try {
+    const r=await api('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('user').value,password:document.getElementById('pass').value})});
+    if(!r.ok){alert('用户名或密码不对（不是 SSH 密码）');return}
+    document.getElementById('login').style.display='none';
+    document.getElementById('app').classList.remove('hid');
+    refresh();
+  } catch(e) { alert('登录请求失败：'+e); }
+}
+document.getElementById('btnLogin').addEventListener('click', doLogin);
+document.getElementById('pass').addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); });
 async function refresh(){
-  const st=await (await fetch('/api/status')).json();
-  status.innerHTML='面板 '+st.listen+' /'+st.path+' · Xray '+(st.xray?'运行中':'未运行')+' · 节点 '+st.nodes;
-  const ns=await (await fetch('/api/nodes')).json();
-  nodes.innerHTML='<table><tr><th>名称</th><th>协议</th><th>端口</th><th>链接</th><th></th></tr>'+ns.map(n=>`<tr><td>${n.name}</td><td>${n.protocol}</td><td>${n.port}</td><td><pre>${n.share||''}</pre></td><td><button class="ghost" onclick="delNode('${n.id}')">删</button></td></tr>`).join('')+'</table>';
-  const fs=await (await fetch('/api/forwards')).json();
-  fwds.innerHTML=(fs||[]).map(f=>`<div>${f.mode} :${f.port} → ${f.target} <button class="ghost" onclick="delFwd('${f.id}')">删</button></div>`).join('');
+  const st=await (await api('/status')).json();
+  document.getElementById('statline').textContent='监听 '+st.listen+'  ·  /'+st.path+'  ·  公网 '+(st.publicHost||'未设置')+'  ·  Xray '+(st.xray?'运行':'未运行')+'  ·  节点 '+st.nodes;
+  if(st.publicHost) phost.value=st.publicHost;
+  const ns=await (await api('/nodes')).json();
+  window.SHARES={};
+  nodes.innerHTML='<table><tr><th>名称</th><th>协议</th><th>端口</th><th>分享链接</th><th></th></tr>'+(ns||[]).map(n=>{
+    window.SHARES[n.id]=n.share||'';
+    const nm=String(n.name||'').replace(/</g,'');
+    return `<tr><td><div style="display:flex;gap:6px;align-items:center"><input data-id="${n.id}" value="${nm}" style="min-width:90px"/><button class="ghost" type="button" data-save="${n.id}">保存</button></div></td><td>${n.protocol}</td><td>${n.port}</td><td><textarea readonly rows="3" style="width:100%">${(n.share||'').replace(/</g,'')}</textarea><button class="ghost" type="button" data-copy="${n.id}">复制</button></td><td><button class="ghost" type="button" data-del="${n.id}">删除</button></td></tr>`;
+  }).join('')+'</table>';
+  nodes.querySelectorAll('[data-copy]').forEach(b=>b.addEventListener('click',()=>copyText(window.SHARES[b.dataset.copy]||'')));
+  nodes.querySelectorAll('[data-save]').forEach(b=>b.addEventListener('click',()=>renameNode(b.dataset.save)));
+  nodes.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click',()=>delNode(b.dataset.del)));
+  const fs=await (await api('/forwards')).json();
+  const MODE={relay:'中转',ingress:'入口',egress:'落地'};
+  fwds.innerHTML=(fs||[]).map(f=>`<div>${MODE[f.mode]||f.mode} :${f.port} → ${f.target} <button class="ghost" onclick="delFwd('${f.id}')">删除</button></div>`).join('')||'<div class="hint">暂无</div>';
+  if(st.domain) cdomain.value=st.domain;
 }
 async function createNode(){
   const body={protocol:proto.value,port:Number(port.value),name:name.value};
-  if(dest.value) body.reality={dest:dest.value,server_names:sni.value?[sni.value]:undefined};
-  const r=await fetch('/api/nodes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(dest.value||sni.value) body.reality={dest:dest.value||undefined,server_names:sni.value?[sni.value]:undefined};
+  const r=await api('/nodes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   if(!r.ok){alert(await r.text());return}
-  await fetch('/api/apply',{method:'POST'});refresh();
+  await api('/apply',{method:'POST'});refresh();
 }
-async function delNode(id){await fetch('/api/nodes?id='+id,{method:'DELETE'});refresh()}
-async function saveSocks(en){
-  await fetch('/api/socks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({listen:sl.value,port:Number(sp.value),enabled:en})});
+async function delNode(id){await api('/nodes?id='+id,{method:'DELETE'});refresh()}
+async function saveSocks(en){await api('/socks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({listen:sl.value,port:Number(sp.value),user:su.value,pass:sPwd.value,udp:true,enabled:en})});refresh()}
+async function saveHTTP(en){await api('/http',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({listen:hl.value,port:Number(hp.value),user:hu.value,pass:hPwd.value,enabled:en})});refresh()}
+async function addFwd(){await api('/forwards',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:fm.value,port:Number(fp.value),target:ft.value,network:'tcp'})});refresh()}
+async function delFwd(id){await api('/forwards?id='+id,{method:'DELETE'});refresh()}
+async function saveMt(en){const r=await api('/mtproto',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({listen:ml.value,port:Number(mp.value),enabled:!!en})});mtout.textContent=await r.text()}
+async function issueCert(){
+  const r=await api('/cert',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({domain:cdomain.value,mode:cmode.value})});
+  certinfo.textContent=r.ok?'证书已签发，请点重新应用 Xray':'签发失败：'+await r.text();
+}
+async function apply(){await api('/apply',{method:'POST'});refresh()}
+function copyText(t){
+  if(!t){alert('没有可复制的链接');return}
+  const ta=document.createElement('textarea');
+  ta.value=t;
+  ta.style.position='fixed';
+  ta.style.left='-9999px';
+  document.body.appendChild(ta);
+  ta.focus(); ta.select();
+  let ok=false;
+  try{ok=document.execCommand('copy');}catch(e){ok=false}
+  document.body.removeChild(ta);
+  alert(ok?'已复制到剪贴板':'复制失败，请长按链接全选复制');
+}
+async function renameNode(id){
+  const inp=nodes.querySelector('input[data-id="'+id+'"]');
+  const name=(inp&&inp.value||'').trim();
+  if(!name){alert('名称不能为空');return}
+  const r=await api('/nodes?id='+encodeURIComponent(id),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
+  if(!r.ok){alert(await r.text());return}
   refresh();
 }
-async function addFwd(){
-  await fetch('/api/forwards',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:fm.value,port:Number(fp.value),target:ft.value,network:'tcp'})});
+async function saveHost(){
+  const r=await api('/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({public_host:phost.value})});
+  if(!r.ok){alert(await r.text());return}
   refresh();
 }
-async function delFwd(id){await fetch('/api/forwards?id='+id,{method:'DELETE'});refresh()}
-async function saveMt(){
-  const r=await fetch('/api/mtproto',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({port:Number(mp.value),enabled:true})});
-  mtout.textContent=JSON.stringify(await r.json(),null,2);
-}
-async function apply(){await fetch('/api/apply',{method:'POST'});refresh()}
 </script>
 </body>
 </html>
