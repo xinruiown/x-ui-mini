@@ -5,7 +5,8 @@
 *.test
 *.out
 .DS_Store
-x-ui-mini
+/x-ui-mini
+/x-ui-mini.exe
 /usr/
 *.bak
 *.key
