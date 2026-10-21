@@ -50,6 +50,14 @@ x-ui-mini restore <file>
 - 不要把 `config.json`、密码、Reality 私钥、证书私钥提交到 Git
 - SOCKS/HTTP 若对公网开放必须设密码
 
+## AI 维护与更新说明
+
+- GitHub 项目：[xinruiown/x-ui-mini](https://github.com/xinruiown/x-ui-mini)
+- 最新安装脚本：[一键安装入口](https://raw.githubusercontent.com/xinruiown/x-ui-mini/main/install.sh)
+- 最新正式发行包：[GitHub Releases](https://github.com/xinruiown/x-ui-mini/releases/latest)
+- 给 Hermes / HR / WorkBuddy 的维护交接：[GITHUB_MAINTENANCE.md](GITHUB_MAINTENANCE.md) 和 [AGENTS.md](AGENTS.md)
+- 更新日志：[CHANGELOG.md](CHANGELOG.md)。版本发布前需测试、核验变更和备份，不能把私钥或运行数据上传。
+
 ## 许可证
 
 MIT。Xray-core、mtg 为其自身许可证，由安装脚本另行下载。
